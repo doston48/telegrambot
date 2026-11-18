@@ -104,11 +104,9 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data.startswith("set_lang_"):
         new_lang = data.split("_")[2]
         if new_lang in LANGUAGES:
-            state.language = new_lang
+            state.update_settings(language=new_lang)
             success_msg = get_text(new_lang, "lang_changed", lang=LANGUAGES[new_lang])
-            # Send message with updated main keyboard in new language
             await query.message.reply_text(success_msg, reply_markup=get_main_keyboard(new_lang), parse_mode="Markdown")
-            # Also edit the settings message or delete it
             try:
                 await query.message.delete()
             except Exception:
@@ -117,7 +115,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data.startswith("set_tone_"):
         new_tone = data.split("_")[2]
         if new_tone in AI_TONES:
-            state.tone = new_tone
+            state.update_settings(tone=new_tone)
             tone_name = AI_TONES[new_tone].get(lang, AI_TONES[new_tone]["en"])
             success_msg = get_text(lang, "tone_changed", tone=tone_name)
             await query.message.edit_text(success_msg, reply_markup=get_settings_inline_keyboard(lang), parse_mode="Markdown")
@@ -145,23 +143,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("💬 Send me any question or prompt and I will answer with Gemini AI!", reply_markup=get_main_keyboard(lang))
         return
         
-    # Otherwise, query Gemini AI
-    # Show typing action
+    # Otherwise, query Gemini AI using native chat session
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
     
-    response_text = gemini_client.generate_response(
-        prompt=text,
-        language=lang,
-        tone=state.tone,
-        history=state.history
-    )
+    response_text = gemini_client.send_message(state.chat, text)
     
-    # Update history
-    state.history.append({"role": "user", "parts": [text]})
-    state.history.append({"role": "model", "parts": [response_text]})
-    
-    # Keep history bounded (e.g. last 10 turns)
-    if len(state.history) > 20:
-        state.history = state.history[-20:]
-        
     await update.message.reply_text(response_text, reply_markup=get_main_keyboard(lang), parse_mode="Markdown")

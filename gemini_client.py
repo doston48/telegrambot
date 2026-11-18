@@ -4,7 +4,6 @@ from config import GEMINI_API_KEY
 
 logger = logging.getLogger(__name__)
 
-# Try importing the new google-genai SDK, fallback to google.generativeai if needed
 HAS_NEW_SDK = False
 try:
     from google import genai
@@ -32,47 +31,44 @@ class GeminiClient:
         except Exception as e:
             logger.error(f"Failed to initialize Gemini client: {e}")
 
-    def generate_response(self, prompt: str, language: str = "en", tone: str = "friendly", history: list = None) -> str:
+    def create_chat(self, language: str = "en", tone: str = "friendly"):
         if not self.api_key or (not self.client and not HAS_NEW_SDK):
-            return "⚠️ Gemini API key is missing. Please set GEMINI_API_KEY in your .env file."
+            return None
+
+        system_instruction = (
+            f"You are a helpful AI assistant in a Telegram bot. "
+            f"You must respond in the language code '{language}'. "
+            f"Your conversation tone should be '{tone}'."
+        )
+        model_name = "gemini-3.5-flash-lite"
 
         try:
-            system_instruction = (
-                f"You are a helpful AI assistant in a Telegram bot. "
-                f"You must respond in the language code '{language}'. "
-                f"Your conversation tone should be '{tone}'."
-            )
-
-            model_name = "gemini-3.5-flash-lite"
-
             if HAS_NEW_SDK:
-                # Build contents with history if available
-                contents = []
-                if history:
-                    contents.extend(history)
-                contents.append(prompt)
-
-                response = self.client.models.generate_content(
+                return self.client.chats.create(
                     model=model_name,
-                    contents=contents,
                     config=types.GenerateContentConfig(
                         system_instruction=system_instruction,
                         temperature=0.7,
                     )
                 )
-                return response.text
             else:
-                # Older generativeai SDK fallback
                 model = genai.GenerativeModel(
                     model_name="gemini-3.5-flash-lite",
                     system_instruction=system_instruction
                 )
-                chat = model.start_chat(history=history or [])
-                response = chat.send_message(prompt)
-                return response.text
-
+                return model.start_chat(history=[])
         except Exception as e:
-            logger.error(f"Gemini generation error: {e}")
+            logger.error(f"Failed to create chat session: {e}")
+            return None
+
+    def send_message(self, chat, prompt: str) -> str:
+        if not chat:
+            return "⚠️ Gemini AI chat session is not initialized. Please check your API key in .env."
+        try:
+            response = chat.send_message(prompt)
+            return response.text
+        except Exception as e:
+            logger.error(f"Gemini send_message error: {e}")
             return f"⚠️ Error communicating with Gemini AI: {str(e)}"
 
 gemini_client = GeminiClient()
